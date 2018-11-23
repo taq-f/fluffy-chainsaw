@@ -3,12 +3,14 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os/exec"
 	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
 //go:generate go-assets-builder --strip-prefix="/assets" -o assets.go  assets
@@ -23,6 +25,13 @@ type Todo struct {
 	File string `json:"file"`
 	Line int    `json:"line"`
 	Text string `json:"text"`
+}
+
+func isGitRepository(repository string) bool {
+	cmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	cmd.Dir = repository
+	output, _ := cmd.Output()
+	return strings.TrimSpace(string(output)) == "true"
 }
 
 func getFiles(repository string) []string {
@@ -79,14 +88,21 @@ func findTodos(repository string, extension string) []Todo {
 	switch extension {
 	case ".js":
 		regex = "//\\s*todo"
-		fileBlob = "*.js"
 	case ".ts":
 		regex = "//\\s*todo"
-		fileBlob = "*.ts"
+	case ".py":
+		regex = "#\\s*todo"
+	case ".java":
+		regex = "//\\s*todo"
+	case ".vue":
+		regex = "//\\s*todo"
+	case ".go":
+		regex = "//\\s*todo"
 	default:
 		// unsupported file type
 		return []Todo{}
 	}
+	fileBlob = "*" + extension
 
 	cmd := exec.Command("git", "grep", "-e", regex, "-i", "--full-name", "--line-number", "--untracked", "--no-color", "-w", "-I", "--null", "--", fileBlob)
 	cmd.Dir = repository
@@ -117,6 +133,15 @@ func main() {
 	flag.Parse()
 	repository := flag.Arg(0)
 
+	fmt.Println()
+	fmt.Println("Initializing application...")
+
+	if !isGitRepository(repository) {
+		log.Fatal("FATAL! The provided path doesn't seem to be a git repository!")
+	}
+
+	fmt.Printf("Repository: %v\n", repository)
+
 	http.HandleFunc("/api/todos", func(w http.ResponseWriter, r *http.Request) {
 		files := getFiles(repository)
 		extensions := getExtensions(files)
@@ -127,6 +152,8 @@ func main() {
 				todos = append(todos, todo)
 			}
 		}
+
+		fmt.Printf("  [%v] API request %v. %v TODOs found\n", time.Now().Format("01/02 15:04:05"), r.URL.Path, len(todos))
 
 		res, _ := json.Marshal(todos)
 
@@ -145,5 +172,6 @@ func main() {
 
 	http.Handle("/", http.FileServer(Assets))
 
-	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+	fmt.Printf("\n\n  Serving at %v !\n\n", "localhost:8123")
+	log.Fatal(http.ListenAndServe("localhost:8123", nil))
 }
